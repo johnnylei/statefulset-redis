@@ -29,6 +29,13 @@ parameters:
 apiVersion: v1
 data:
   port: "6379"
+  sentinel.config: |
+    port 26379
+    dir /tmp
+    sentinel monitor mymaster statefulset-redis-0.statefulset-redis-headless-service.default.svc.cluster.local 6379 2
+    sentinel down-after-milliseconds mymaster 30000
+    sentinel parallel-syncs mymaster 1
+    sentinel failover-timeout mymaster 180000
   redis.config: "# Redis configuration file example.\n#\n# Note that in order to read
     the configuration file, Redis must be\n# started with the file path as first argument:\n#\n#
     ./redis-server /path/to/redis.conf\n\n# Note on units: when memory size is needed,
@@ -763,7 +770,7 @@ kind: StatefulSet
 metadata:
   name: statefulset-redis
 spec:
-  replicas: 2
+  replicas: 3
   serviceName: statefulset-redis-headless-service
   selector:
     matchLabels:
@@ -793,8 +800,8 @@ spec:
         imagePullPolicy: IfNotPresent
         volumeMounts:
         - name: redis-config
-          readOnly: true
-          mountPath: /etc/redis
+          #readOnly: true
+          mountPath: /etc/redis/conf.d
         - name: statefulset-redis-data
           mountPath: /var/run/redis/data
         env:
@@ -803,6 +810,14 @@ spec:
             configMapKeyRef:
               name: statefulset-redis-config
               key: port
+        #command:
+        #- "/bin/bash"
+        #- "-c"
+        #- |
+        #  while true
+        #  do
+        #    sleep 10
+        #  done
         readinessProbe:
           exec: 
             command: ["netstat", "-tn", "|", "grep", "$SERVER_PORT"]
@@ -812,10 +827,12 @@ spec:
         #- /home/work/programs/redis-4.0.8/src/redis-server --port 6380
         #- /home/work/programs/redis-4.0.8/src/redis-server /etc/redis/redis.config
         - |
+          cat /etc/redis/conf.d/sentinel.config > /root/sentinel.config
           IP=$(hostname -i)
           INDEX=${HOSTNAME##*-}
           if [ $INDEX -eq 0 ]; then
-            /home/work/programs/redis-4.0.8/src/redis-server /etc/redis/redis.config
+            /home/work/programs/redis-4.0.8/src/redis-server /etc/redis/conf.d/redis.config 
           else
-            /home/work/programs/redis-4.0.8/src/redis-server /etc/redis/redis.config --slaveof statefulset-redis-0.statefulset-redis-headless-service $SERVER_PORT
+            /home/work/programs/redis-4.0.8/src/redis-server /etc/redis/conf.d/redis.config --slaveof statefulset-redis-0.statefulset-redis-headless-service $SERVER_PORT
           fi
+          /home/work/programs/redis-4.0.8/src/redis-server /root/sentinel.config --sentinel
