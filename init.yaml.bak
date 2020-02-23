@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Service
+metadata: 
+  name: statefulset-redis-headless-service
+spec:
+  clusterIP: None
+  ports:
+  - name: main
+    protocol: TCP
+    port: 6379
+  selector:
+    app: statefulset-redis
+
+---
+# configmap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: statefulset-redis-config
+data:
+  port: "6379"
+
+---
+#dynamic pvc: storage class
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: storage-class-pvc
+  provisioner: kubernetes.io/glusterfs
+  parameters:
+    resturl: "http://192.168.1.91:8080"
+    restauthenabled: "false"
+
+
+

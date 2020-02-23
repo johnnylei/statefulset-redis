@@ -1,0 +1,13 @@
+FROM registry.local:5000/base/v1
+MAINTAINER johnny leiyuqing_jing@163.com
+
+WORKDIR /home/work/programs
+RUN tar xvf redis-4.0.8.tar.gz
+WORKDIR /home/work/programs/redis-4.0.8
+RUN make
+
+RUN mkdir -p /etc/redis
+RUN mkdir -p /var/run/redis/data
+
+USER work
+

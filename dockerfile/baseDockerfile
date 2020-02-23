@@ -1,0 +1,14 @@
+FROM registry.local:5000/centos/7
+MAINTAINER johnny leiyuqing_jing@163.com
+RUN yum install sudo passwd -y
+RUN yum install curl vim gcc gcc-c++ make pcre pcre-devel zlib zlib-devel openssl openssl-devel net-tools -y 
+
+RUN groupadd work && useradd work -g work && echo "work@123"|passwd --stdin work 
+RUN target_file="/etc/sudoers" && line=$(grep -En '^root.+ALL$' $target_file|awk -F ":" '{print $1}') && sed -i "${line}a work ALL=(ALL) ALL" $target_file
+RUN chown -R work:work /home/work
+RUN echo "root@123"|passwd --stdin root
+RUN mkdir -p /home/work/workspace
+RUN mkdir -p /home/work/programs
+
+
+ONBUILD COPY programs/* /home/work/programs/
