@@ -9,3 +9,5 @@ RUN make
 RUN mkdir -p /etc/redis/conf.d
 RUN mkdir -p /var/run/redis/data
 
+RUN yum install ruby rubygems -y
+RUN gem install redis

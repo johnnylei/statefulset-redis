@@ -100,7 +100,7 @@ data:
     300\n\n################################# GENERAL #####################################\n\n#
     By default Redis does not run as a daemon. Use 'yes' if you need it.\n# Note that
     Redis will write a pid file in /var/run/redis.pid when daemonized.\ndaemonize
-    no\n\n# If you run Redis from upstart or systemd, Redis can interact with your\n#
+    yes\n\n# If you run Redis from upstart or systemd, Redis can interact with your\n#
     supervision tree. Options:\n#   supervised no      - no supervision interaction\n#
     \  supervised upstart - signal upstart by putting Redis into SIGSTOP mode\n#   supervised
     systemd - signal systemd by writing READY=1 to $NOTIFY_SOCKET\n#   supervised
@@ -160,7 +160,7 @@ data:
     RDB files, so you can disable it\n# for maximum performances.\n#\n# RDB files
     created with checksum disabled have a checksum of zero that will\n# tell the loading
     code to skip the check.\nrdbchecksum yes\n\n# The filename where to dump the DB\ndbfilename
-    master.rdb\n\n# The working directory.\n#\n# The DB will be written inside this
+    node.rdb\n\n# The working directory.\n#\n# The DB will be written inside this
     directory, with the filename specified\n# above using the 'dbfilename' configuration
     directive.\n#\n# The Append Only File will also be created inside this directory.\n#\n#
     Note that you must specify a directory here, not a file name.\ndir /var/run/redis/data\n\n#################################
@@ -477,15 +477,15 @@ data:
     of users to deploy it in production.\n# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n#\n#
     Normal Redis instances can't be part of a Redis Cluster; only nodes that are\n#
     started as cluster nodes can. In order to start a Redis instance as a\n# cluster
-    node enable the cluster support uncommenting the following:\n#\n# cluster-enabled
+    node enable the cluster support uncommenting the following:\n#\ncluster-enabled
     yes\n\n# Every cluster node has a cluster configuration file. This file is not\n#
     intended to be edited by hand. It is created and updated by Redis nodes.\n# Every
     Redis Cluster node requires a different cluster configuration file.\n# Make sure
     that instances running in the same system do not have\n# overlapping cluster configuration
-    file names.\n#\n# cluster-config-file nodes-6379.conf\n\n# Cluster node timeout
+    file names.\n#\ncluster-config-file nodes-6379.conf\n\n# Cluster node timeout
     is the amount of milliseconds a node must be unreachable\n# for it to be considered
     in failure state.\n# Most other internal time limits are multiple of the node
-    timeout.\n#\n# cluster-node-timeout 15000\n\n# A slave of a failing master will
+    timeout.\n#\ncluster-node-timeout 15000\n\n# A slave of a failing master will
     avoid to start a failover if its data\n# looks too old.\n#\n# There is no simple
     way for a slave to actually have an exact measure of\n# its \"data age\", so the
     following two checks are performed:\n#\n# 1) If there are multiple slaves able
@@ -770,7 +770,7 @@ kind: StatefulSet
 metadata:
   name: statefulset-redis
 spec:
-  replicas: 3
+  replicas: 6
   serviceName: statefulset-redis-headless-service
   selector:
     matchLabels:
@@ -810,12 +810,15 @@ spec:
             configMapKeyRef:
               name: statefulset-redis-config
               key: port
+        - name: CLUSTER_REPLICAS 
+          value: "6"
         #command:
         #- "/bin/bash"
         #- "-c"
         #- |
         #  while true
         #  do
+        #    rm -f /var/run/redis/data/*
         #    sleep 10
         #  done
         readinessProbe:
@@ -824,15 +827,23 @@ spec:
         command:
         - "/bin/bash"
         - "-c"
-        #- /home/work/programs/redis-4.0.8/src/redis-server --port 6380
-        #- /home/work/programs/redis-4.0.8/src/redis-server /etc/redis/redis.config
         - |
-          cat /etc/redis/conf.d/sentinel.config > /root/sentinel.config
-          IP=$(hostname -i)
+          rm -f /var/run/redis/data/*
+          /home/work/programs/redis-4.0.8/src/redis-server /etc/redis/conf.d/redis.config 
+          BUILD_CLUSTER_COMMAND="/home/work/programs/redis-4.0.8/src/redis-trib.rb create --replicas 1"
           INDEX=${HOSTNAME##*-}
-          if [ $INDEX -eq 0 ]; then
-            /home/work/programs/redis-4.0.8/src/redis-server /etc/redis/conf.d/redis.config 
-          else
-            /home/work/programs/redis-4.0.8/src/redis-server /etc/redis/conf.d/redis.config --slaveof statefulset-redis-0.statefulset-redis-headless-service $SERVER_PORT
+          if [ $INDEX -eq  `expr $CLUSTER_REPLICAS - 1` ]; then
+            for((i=0; i<$CLUSTER_REPLICAS; i++))
+            do
+              ip=$(ping -c 1 statefulset-redis-$i.statefulset-redis-headless-service.default.svc.cluster.local|grep icmp_seq=1|awk -F "(" '{print $2}'|awk -F ")" '{print $1}')
+              BUILD_CLUSTER_COMMAND=$BUILD_CLUSTER_COMMAND" ${ip}:6379"
+            done
+            echo $BUILD_CLUSTER_COMMAND
+            echo "yes" > /tmp/yes
+            $BUILD_CLUSTER_COMMAND < /tmp/yes
+            rm -f /tmp/yes
           fi
-          /home/work/programs/redis-4.0.8/src/redis-server /root/sentinel.config --sentinel
+          while true
+          do
+            sleep 3
+          done
